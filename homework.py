@@ -87,7 +87,7 @@ def check_response(response):
 
 
 def parse_status(homework):
-    """Извлечение данных о конкретной домашней работе, статус этой работы"""
+    """Извлечение данных о конкретной домашней работе, статус этой работы."""
     try:
         homework_name = homework['homework_name']
         logger.debug(f'Извлекаем название работы: {homework_name}')
