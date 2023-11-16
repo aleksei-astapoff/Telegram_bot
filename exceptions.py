@@ -2,5 +2,9 @@ class APIConnectError(Exception):
     pass
 
 
-class HttpStatusError(Exception):
+class HttpStatusErro(Exception):
+    pass
+
+
+class EmptyResponnseFopmAPI(Exception):
     pass
