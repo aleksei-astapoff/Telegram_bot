@@ -2,7 +2,7 @@ import os
 import sys
 import time
 import logging
-from logging import Formatter
+from logging import StreamHandler, Formatter
 from http import HTTPStatus
 
 import requests
@@ -29,12 +29,19 @@ HOMEWORK_VERDICTS = {
 logger = logging.getLogger(__name__)
 log_file_path = os.path.abspath(__file__ + '.log')
 file_handler = logging.FileHandler(log_file_path)
-file_handler.setLevel(logging.DEBUG)
 file_handler.setFormatter(
     Formatter(fmt='%(asctime)s, [%(levelname)s],'
               '%(funcName)s:%(lineno)d, %(message)s, %(name)s')
 )
+stdout_handler = StreamHandler(stream=sys.stdout)
+stdout_handler.setLevel(logging.DEBUG)
+stdout_handler.setFormatter(
+    Formatter(fmt='%(asctime)s, [%(levelname)s],'
+                  '%(funcName)s:%(lineno)d, %(message)s, %(name)s')
+)
 logger.addHandler(file_handler)
+logger.addHandler(stdout_handler)
+logger.setLevel(logging.DEBUG)
 
 
 def check_tokens():
@@ -66,7 +73,7 @@ def send_message(bot, message):
     logger.info(f'Сообщение: {message} подготовленно к отправке в Telegram.')
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
-        logger.debug('Сообщение отправлено в Telegram чат: {}'.format(message))
+        logger.debug(f'Сообщение отправлено в Telegram чат: {message}')
     except telegram.error.TelegramError:
         message_send = False
         logger.error('Сообщение не отправленно в Telegram чат!')
@@ -78,7 +85,7 @@ def get_api_answer(timestamp):
     api_params = {
         'url': ENDPOINT,
         'headers': HEADERS,
-        'params': timestamp,
+        'params': {'from_date': timestamp},
     }
     error_message_params = (
         'Данные для запроса: url: '
@@ -148,12 +155,12 @@ def main():
     """Основная логика работы бота."""
     if not check_tokens():
         logger.critical('Отсутствует переменная окружения')
-        sys.exit('Отсутствует переменная окружения, завершение программы')
+        raise KeyError('Отсутствует переменная окружения,'
+                       'завершение программы')
 
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
-    timestamp = 0 # int(time.time())
-    last_message = ''
-    homework_message_sent = False
+    timestamp = 0
+    dict_messages = {}
 
     while True:
         try:
@@ -161,34 +168,31 @@ def main():
             logger.debug('Выполнение "get_api_answer" проверка статуса работы')
             homeworks = check_response(response)
             logger.debug('Выполнение "check_response"'
-                         ' Проверяет ответ API на соответствие типу данных')
-            if len(homeworks) == 0 and not homework_message_sent:
-                homework_message_sent = True
-                logging.debug('Домашних работ нет.')
-                send_message(bot, 'Домашних работ на проверку нет.')
-                break
-            for homework in homeworks:
-                message = parse_status(homework)
+                         'Проверяет ответ API на соответствие типу данных')
+            if homeworks:
+                message = parse_status(homeworks[0])
                 logger.debug('Выполнение "parse_status" извлечение данных'
                              'о конкретной домашней работе')
-                if message:
-                    last_message = message
-                    send_message(bot, message)
-                    logger.debug('Выполнение "send_message"'
-                                 'отправка сообщение в Telegram')
-                else:
-                    message = 'Отсутствие новых статусов'
-                    last_message = message
-                    send_message(bot, message)
-                    logger.debug('Отсутствие новых статусов')
-            if not send_message():
-                logger.critical('Ошибка. Сообщение не отправлено.')
+                dict_messages['message'] = message
+            else:
+                message = 'Нет новых статусов'
+                dict_messages['message'] = message
+            if message not in dict_messages:
+                if send_message(bot, dict_messages['message']):
+                    dict_messages['message'] = message
+            timestamp = response.get("current_date")
 
         except Exception as error:
-            if last_message != message:
-                logger.error('Бот не смог отправить сообщение')
-                message = f'Сбой в работе программы: {error}'
-                send_message(bot, message)
+            logger.exception('Ошибка при выполнении кода:', exc_info=True)
+            if isinstance(error, exceptions.EmptyResponnseFopmAPI):
+                logger.error("Ответ от API не содержит ключи")
+                raise exceptions.EmptyResponnseFopmAPI(
+                    'Ответ от API не содержит ключи.'
+                )
+
+            message = f'Сбой в работе программы: {error}'
+            logger.error('Бот не смог отправить сообщение')
+            send_message(bot, message)
 
         finally:
             time.sleep(RETRY_PERIOD)
@@ -197,8 +201,7 @@ def main():
 if __name__ == '__main__':
     logging.basicConfig(
         level=logging.DEBUG,
-        filename='program.log',
         format='%(asctime)s, [%(levelname)s],'
-               '%(funcName)s:%(lineno)d, %(message)s, %(name)s'
+               '%(funcName)s:%(lineno)d, %(message)s, %(name)s',
         )
     main()
