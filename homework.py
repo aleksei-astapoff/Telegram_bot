@@ -109,7 +109,7 @@ def get_api_answer(timestamp):
         error_message = (
             error_message_params
             + f'Некорректный статус ответа от API: {status_code}'
-            )
+        )
         api_response = response.get('error_message')
         if api_response:
             error_message += f', Причина: {api_response}'
@@ -203,5 +203,5 @@ if __name__ == '__main__':
         level=logging.DEBUG,
         format='%(asctime)s, [%(levelname)s],'
                '%(funcName)s:%(lineno)d, %(message)s, %(name)s',
-        )
+    )
     main()
