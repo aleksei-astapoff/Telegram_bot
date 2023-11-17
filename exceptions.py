@@ -8,3 +8,7 @@ class HttpStatusErro(Exception):
 
 class EmptyResponnseFopmAPI(Exception):
     pass
+
+
+class InvalidResponnseCode(Exception):
+    pass

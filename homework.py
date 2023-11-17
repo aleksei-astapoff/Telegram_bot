@@ -28,7 +28,7 @@ HOMEWORK_VERDICTS = {
 
 logger = logging.getLogger(__name__)
 log_file_path = os.path.abspath(__file__ + '.log')
-file_handler = logging.FileHandler(log_file_path)
+file_handler = logging.FileHandler(log_file_path, encoding='utf-8')
 file_handler.setFormatter(
     Formatter(fmt='%(asctime)s, [%(levelname)s],'
               '%(funcName)s:%(lineno)d, %(message)s, %(name)s')
@@ -48,7 +48,6 @@ def check_tokens():
     """Проверка доступности переменных окружения."""
     logger.info('Проводим проверку переменных окружения')
     missing_token = None
-    bool_token = True
     tokens = (
         ('PRACTICUM_TOKEN', PRACTICUM_TOKEN),
         ('TELEGRAM_TOKEN', TELEGRAM_TOKEN),
@@ -57,14 +56,12 @@ def check_tokens():
     for token_name, token_value in tokens:
         if not token_value or token_value != os.getenv(token_name):
             missing_token = token_name
-            bool_token = False
             logger.critical(f'Переменная окружения {missing_token}'
                             f' не доступна или не верна')
             break
     if missing_token:
         raise ValueError(f'Отсутствует или не верная '
                          f'переменная окружения: {missing_token}')
-    return bool_token
 
 
 def send_message(bot, message):
@@ -99,21 +96,18 @@ def get_api_answer(timestamp):
         response = homework_statuses.json()
     except requests.exceptions.RequestException as error:
         error_message = (
-            error_message_params
-            + f'Ошибка при отправке запроса к API: {error}'
+            f'{error_message_params} '
+            f'Ошибка при отправке запроса к API: {error}'
         )
         raise ConnectionError(error_message)
 
     if homework_statuses.status_code != HTTPStatus.OK:
         status_code = homework_statuses.status_code
         error_message = (
-            error_message_params
-            + f'Некорректный статус ответа от API: {status_code}'
+            f'{error_message_params} '
+            f'Некорректный статус ответа от API: {status_code}'
         )
-        api_response = response.get('error_message')
-        if api_response:
-            error_message += f', Причина: {api_response}'
-        raise ConnectionError(error_message)
+        raise exceptions.InvalidResponnseCode(error_message)
     return response
 
 
@@ -139,11 +133,8 @@ def parse_status(homework):
         logger.debug(f'Извлекаем название работы: {homework_name}')
         homework_status = homework['status']
         logger.debug(f'Извлекаем статус работы: {homework_status}')
-    except KeyError:
-        if not homework_name:
-            raise KeyError('В словаре нет ключа "homework_name"')
-        if not homework_name:
-            raise KeyError('В словаре нет ключа "status"')
+    except KeyError as error:
+        raise KeyError(f'В словаре нет ключа {error}')
     if homework_status not in HOMEWORK_VERDICTS:
         raise ValueError('Недопустимый статус домашней работы')
     verdict = HOMEWORK_VERDICTS[homework_status]
@@ -153,11 +144,8 @@ def parse_status(homework):
 
 def main():
     """Основная логика работы бота."""
-    if not check_tokens():
-        logger.critical('Отсутствует переменная окружения')
-        raise KeyError('Отсутствует переменная окружения,'
-                       'завершение программы')
-
+    check_tokens()
+    logger.critical('Отсутствует переменная окружения')
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     timestamp = 0
     dict_messages = {}
@@ -180,19 +168,19 @@ def main():
             if message not in dict_messages:
                 if send_message(bot, dict_messages['message']):
                     dict_messages['message'] = message
-            timestamp = response.get("current_date")
+                    timestamp = response.get('current_date', int(time.time()))
+
+        except exceptions.EmptyResponnseFopmAPI:
+            logger.error("Ответ от API не содержит ключи")
 
         except Exception as error:
             logger.exception('Ошибка при выполнении кода:', exc_info=True)
-            if isinstance(error, exceptions.EmptyResponnseFopmAPI):
-                logger.error("Ответ от API не содержит ключи")
-                raise exceptions.EmptyResponnseFopmAPI(
-                    'Ответ от API не содержит ключи.'
-                )
-
             message = f'Сбой в работе программы: {error}'
+            dict_messages['message'] = message
             logger.error('Бот не смог отправить сообщение')
-            send_message(bot, message)
+            if message not in dict_messages:
+                if send_message(bot, dict_messages['message']):
+                    dict_messages['message'] = message
 
         finally:
             time.sleep(RETRY_PERIOD)
