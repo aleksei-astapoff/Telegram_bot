@@ -162,7 +162,7 @@ def main():
                 logger.debug('Выполнение "parse_status" извлечение данных'
                              'о конкретной домашней работе')
             else:
-                last_message = message
+                message = 'Нет новых статусов'
             if message != last_message:
                 if send_message(bot, message):
                     last_message = message
@@ -170,12 +170,11 @@ def main():
             else:
                 logger.debug(f'Текущее сообщение: {message}')
         except exceptions.EmptyResponnseFopmAPI:
-            logger.error("Ответ от API не содержит ключи")
+            logger.error('Ответ от API не содержит ключи')
 
         except Exception as error:
             logger.exception('Ошибка при выполнении кода:', exc_info=True)
             message = f'Сбой в работе программы: {error}'
-            last_message = message
             logger.error('Бот не смог отправить сообщение')
             if message != last_message:
                 send_message(bot, message)
