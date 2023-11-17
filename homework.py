@@ -102,10 +102,10 @@ def get_api_answer(timestamp):
         raise ConnectionError(error_message)
 
     if homework_statuses.status_code != HTTPStatus.OK:
-        status_code = homework_statuses.status_code
         error_message = (
-            f'{error_message_params} '
-            f'Некорректный статус ответа от API: {status_code}'
+            'Некорректный статус ответа от API: {status_code}. '
+            'Причина: {reason}, '
+            'Текст ошибки: {error_text}'.format(**homework_statuses)
         )
         raise exceptions.InvalidResponnseCode(error_message)
     return response
@@ -148,7 +148,7 @@ def main():
     logger.critical('Отсутствует переменная окружения')
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     timestamp = 0
-    dict_messages = {}
+    last_message = ''
 
     while True:
         try:
@@ -161,26 +161,25 @@ def main():
                 message = parse_status(homeworks[0])
                 logger.debug('Выполнение "parse_status" извлечение данных'
                              'о конкретной домашней работе')
-                dict_messages['message'] = message
             else:
-                message = 'Нет новых статусов'
-                dict_messages['message'] = message
-            if message not in dict_messages:
-                if send_message(bot, dict_messages['message']):
-                    dict_messages['message'] = message
-                    timestamp = response.get('current_date', int(time.time()))
-
+                last_message = message
+            if message != last_message:
+                if send_message(bot, message):
+                    last_message = message
+                    timestamp = response.get('current_date', timestamp)
+            else:
+                logger.debug(f'Текущее сообщение: {message}')
         except exceptions.EmptyResponnseFopmAPI:
             logger.error("Ответ от API не содержит ключи")
 
         except Exception as error:
             logger.exception('Ошибка при выполнении кода:', exc_info=True)
             message = f'Сбой в работе программы: {error}'
-            dict_messages['message'] = message
+            last_message = message
             logger.error('Бот не смог отправить сообщение')
-            if message not in dict_messages:
-                if send_message(bot, dict_messages['message']):
-                    dict_messages['message'] = message
+            if message != last_message:
+                send_message(bot, message)
+                last_message = message
 
         finally:
             time.sleep(RETRY_PERIOD)
